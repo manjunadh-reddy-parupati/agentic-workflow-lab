@@ -1,0 +1,90 @@
+# =============================================================================
+# DocGovernance.ai — full stack in one command
+# =============================================================================
+#   docker compose --env-file configs/.env up -d --build         # full stack
+#   docker compose --env-file configs/.env --profile verba up -d  # + Verba UI
+#
+# All configuration (Azure keys, ports, Weaviate host) comes from configs/.env.
+# Copy configs/.env.example -> configs/.env and fill in your secrets first.
+# (Passing --env-file makes your custom ports drive the host port mappings too.)
+#
+# Once up:
+#   Frontend (UI) : http://localhost:${FRONTEND_PORT}      (default 5173)
+#   Backend (API) : http://localhost:${BACKEND_PORT}/docs  (default 8001)
+#   Weaviate      : http://localhost:${WEAVIATE_HTTP_PORT} (default 8080)
+#   Verba UI      : http://localhost:${VERBA_PORT}         (default 8000, optional)
+# =============================================================================
+
+name: developerai
+
+services:
+  # --- Vector database (stores the indexed Source of Truth) ------------------
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.28.4
+    ports:
+      - "${WEAVIATE_HTTP_PORT:-8080}:8080"
+      - "${WEAVIATE_GRPC_PORT:-50051}:50051"
+    restart: on-failure:0
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: text2vec-transformers
+      ENABLE_MODULES: text2vec-transformers
+      TRANSFORMERS_INFERENCE_API: http://t2v-transformers:8080
+      CLUSTER_HOSTNAME: node1
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+  # --- Local, open-source embedding model (no API keys / subscriptions required) ---
+  t2v-transformers:
+    image: cr.weaviate.io/semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
+    environment:
+      ENABLE_CUDA: "0"
+
+  # --- FastAPI backend + agentic workflow ------------------------------------
+  backend:
+    image: docgovernance-ai-backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - configs/.env
+    environment:
+      # Inside the compose network, reach Weaviate by service name.
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_HTTP_PORT: "8080"
+      WEAVIATE_GRPC_PORT: "50051"
+      BACKEND_PORT: "8001"
+    ports:
+      - "${BACKEND_PORT:-8001}:8001"
+    depends_on:
+      - weaviate
+      - t2v-transformers
+
+  # --- React frontend (built + served by nginx, proxies /api -> backend) -----
+  frontend:
+    image: docgovernance-ai-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+
+  # --- Optional Verba UI (visual inspector over the same Weaviate) -----------
+  # Started only with:  docker compose --profile verba up -d
+  verba:
+    image: semitechnologies/verba:latest
+    profiles: ["verba"]
+    ports:
+      - "${VERBA_PORT:-8000}:8000"
+    environment:
+      WEAVIATE_URL_VERBA: http://weaviate:8080
+    depends_on:
+      - weaviate
+      - t2v-transformers
+
+volumes:
+  weaviate_data:

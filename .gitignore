@@ -157,6 +157,21 @@ ENV/
 env.bak/
 venv.bak/
 
+# Project config (real secrets — only the .example template is committed)
+configs/.env
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Project I/O (user documents & generated reports — keep folders via .gitkeep)
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
+diagram-outputs/*
+!diagram-outputs/.gitkeep
+
 # Spyder project settings
 .spyderproject
 .spyproject

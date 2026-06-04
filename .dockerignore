@@ -1,0 +1,15 @@
+# Keep build context small and secrets out of the image.
+**/__pycache__/
+**/*.pyc
+.venv/
+backend/.venv/
+backend/uv.lock
+configs/.env
+**/.env
+.git/
+frontend/
+docs/
+input/
+output/
+diagram-outputs/
+README.md
