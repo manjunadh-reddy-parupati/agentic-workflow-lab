@@ -1,0 +1,33 @@
+[project]
+name = "docgovernance-ai"
+version = "2.0.0"
+description = "DocGovernance.ai — AI-driven document alignment (Microsoft Agent Framework + local Verba RAG)"
+requires-python = ">=3.10"
+dependencies = [
+    # --- Workflow engine & LLM (Azure OpenAI retained for validation) ---
+    # Pinned: agent-framework is a fast-moving 1.0 beta; newer builds moved
+    # `ChatMessage` and break the import. This is the verified-working build.
+    "agent-framework==1.0.0b260128",
+    "openai",
+    # --- Local RAG (Weaviate, local text2vec-transformers embedder) ---
+    "weaviate-client>=4.5,<5",
+    # --- Document & image processing ---
+    "python-docx",
+    "Pillow",
+    # --- Web API ---
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    # --- Config & misc ---
+    "python-dotenv",
+    "typing_extensions",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# This project is run directly (uvicorn main:app), not imported as a package,
+# so we install dependencies only — no Python modules are packaged.
+[tool.setuptools]
+py-modules = []
