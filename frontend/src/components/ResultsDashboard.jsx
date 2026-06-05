@@ -1,4 +1,5 @@
 import DiscrepancyCard from "./DiscrepancyCard.jsx";
+import { downloadReportPdf } from "../utils/generatePdf.js";
 
 function StatCard({ label, value, tone }) {
   return (
@@ -22,9 +23,18 @@ export default function ResultsDashboard({ report }) {
             <p className="results__file">📄 {report.fileName}</p>
           )}
         </div>
-        {report.processingTime && (
-          <span className="results__time">⏱ {report.processingTime}</span>
-        )}
+        <div className="results__actions">
+          {report.processingTime && (
+            <span className="results__time">⏱ {report.processingTime}</span>
+          )}
+          <button
+            className="btn btn--pdf"
+            onClick={() => downloadReportPdf(report)}
+            title="Download report as PDF"
+          >
+            📥 Export PDF
+          </button>
+        </div>
       </div>
 
       <div className="stats-grid">

@@ -456,6 +456,37 @@ body {
   white-space: nowrap;
 }
 
+.results__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn--pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.btn--pdf:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(91, 140, 255, 0.35);
+}
+
+.btn--pdf:active {
+  transform: translateY(0);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
