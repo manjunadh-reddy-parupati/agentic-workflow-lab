@@ -608,6 +608,114 @@ def parse_markdown(content: str) -> list[ParsedSection]:
 
 
 # ==============================================================================
+# region PDF PARSER  (PyMuPDF / fitz)
+# ==============================================================================
+def parse_pdf(file_path: str) -> list[ParsedSection]:
+    """Parse a PDF document into sections.
+
+    Uses font-size heuristics to detect headings: any line whose font size is
+    larger than the document's median body size (or is bold/all-caps and short)
+    is treated as a section heading — similar to how the markdown parser handles
+    bold lines.
+    """
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(file_path)
+    sections: list[ParsedSection] = []
+    current_section: Optional[ParsedSection] = None
+    para_buffer: list[str] = []
+    paragraph_index = [0]
+
+    # First pass: collect font sizes to find the median body size.
+    all_sizes: list[float] = []
+    for page in doc:
+        blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
+        for block in blocks:
+            if block.get("type") != 0:  # text block
+                continue
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    text = span.get("text", "").strip()
+                    if text:
+                        all_sizes.append(span.get("size", 12))
+
+    # Median body size — headings are typically >= 1.2x this
+    if all_sizes:
+        sorted_sizes = sorted(all_sizes)
+        median_size = sorted_sizes[len(sorted_sizes) // 2]
+    else:
+        median_size = 12.0
+    heading_threshold = median_size * 1.2
+
+    def flush_paragraph():
+        if not para_buffer:
+            return
+        text = "\n".join(para_buffer).strip()
+        para_buffer.clear()
+        if text and current_section is not None:
+            current_section.paragraphs.append(
+                ParagraphInfo(page_no=0, para_index=paragraph_index[0], para_text=text, character_count=len(text))
+            )
+            paragraph_index[0] += 1
+
+    def is_heading(text: str, size: float, flags: int) -> bool:
+        if not text.strip() or len(text.strip()) > 120:
+            return False
+        # Large font
+        if size >= heading_threshold:
+            return True
+        # Bold (bit 4 in fitz flags) and short
+        is_bold = bool(flags & (1 << 4))
+        if is_bold and len(text.strip()) <= 80:
+            return True
+        # ALL CAPS short line
+        if _is_all_caps(text.strip()) and len(text.strip()) <= 80:
+            return True
+        return False
+
+    # Second pass: extract text with section splitting.
+    for page_num, page in enumerate(doc, start=1):
+        blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
+        for block in blocks:
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                line_text_parts: list[str] = []
+                line_size = 12.0
+                line_flags = 0
+                for span in line.get("spans", []):
+                    span_text = span.get("text", "")
+                    if span_text:
+                        line_text_parts.append(span_text)
+                        line_size = max(line_size, span.get("size", 12.0))
+                        line_flags |= span.get("flags", 0)
+
+                line_text = "".join(line_text_parts).strip()
+                if not line_text:
+                    flush_paragraph()
+                    continue
+
+                if is_heading(line_text, line_size, line_flags):
+                    flush_paragraph()
+                    current_section = ParsedSection(section_name=_clean_heading_text(line_text))
+                    sections.append(current_section)
+                    paragraph_index[0] = 0
+                else:
+                    if current_section is None:
+                        current_section = ParsedSection(section_name="Document_Start")
+                        sections.append(current_section)
+                    para_buffer.append(line_text)
+                    if sum(len(p) for p in para_buffer) > 2000:
+                        flush_paragraph()
+
+        flush_paragraph()
+
+    doc.close()
+    return [s for s in sections if s.paragraphs or s.images]
+# endregion
+
+
+# ==============================================================================
 # region SECTION CONVERSION (+ splitting)
 # ==============================================================================
 def _split_section_by_paragraphs(section: ParsedSection, max_chars: int) -> list[tuple[str, list[ParagraphInfo]]]:
@@ -722,6 +830,11 @@ class DocumentSegmenterExecutor(Executor):
                 parsed = parse_docx(file_path)
                 print(f"    \u2713 Parsed {len(parsed)} sections from Word document")
                 extracted = convert_to_processable_sections(parsed)
+            elif ext == ".pdf":
+                print("    Using: PyMuPDF (PDF text extraction)")
+                parsed = parse_pdf(file_path)
+                print(f"    \u2713 Parsed {len(parsed)} sections from PDF")
+                extracted = convert_to_processable_sections(parsed)
             elif ext in (".md", ".markdown", ".txt"):
                 print("    Using: Markdown/Text parser")
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -730,7 +843,7 @@ class DocumentSegmenterExecutor(Executor):
                 print(f"    \u2713 Parsed {len(parsed)} sections from Markdown")
                 extracted = convert_to_processable_sections(parsed)
             else:
-                raise ValueError(f"Unsupported file format: {ext}. Use .docx, .md, or .txt files.")
+                raise ValueError(f"Unsupported file format: {ext}. Use .docx, .pdf, .md, or .txt files.")
 
         print(f"    \u2713 Created {len(extracted)} processable sections")
         for s in extracted:
@@ -1261,9 +1374,10 @@ def build_workflow():
 # region OUTPUT + ENTRY POINT
 # ==============================================================================
 def resolve_document_path() -> str:
-    """Find a .docx in INPUT (preferred), else fall back to the markdown/text file."""
+    """Find a document in INPUT (preferred), else fall back to the markdown/text file."""
     CONFIG.INPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
+    # Priority: .docx > .pdf > .md/.txt
     docx_candidates = sorted(
         p for p in CONFIG.INPUT_FOLDER.glob("*.docx") if not p.name.startswith("~$")
     )
@@ -1271,12 +1385,17 @@ def resolve_document_path() -> str:
         print(f"\U0001f4c4 Found Word document: {docx_candidates[0]}")
         return str(docx_candidates[0])
 
+    pdf_candidates = sorted(CONFIG.INPUT_FOLDER.glob("*.pdf"))
+    if pdf_candidates:
+        print(f"\U0001f4c4 Found PDF document: {pdf_candidates[0]}")
+        return str(pdf_candidates[0])
+
     if CONFIG.MARKDOWN_FALLBACK_PATH.exists():
         print(f"\U0001f4c4 Found Markdown file: {CONFIG.MARKDOWN_FALLBACK_PATH} (fallback mode)")
         return str(CONFIG.MARKDOWN_FALLBACK_PATH)
 
     raise FileNotFoundError(
-        f"No document found. Place a .docx file in: {CONFIG.INPUT_FOLDER} "
+        f"No document found. Place a .docx or .pdf file in: {CONFIG.INPUT_FOLDER} "
         f"(or provide {CONFIG.MARKDOWN_FALLBACK_PATH})"
     )
 

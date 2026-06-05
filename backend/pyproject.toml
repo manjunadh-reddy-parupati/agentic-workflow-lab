@@ -13,6 +13,7 @@ dependencies = [
     "weaviate-client>=4.5,<5",
     # --- Document & image processing ---
     "python-docx",
+    "pymupdf",
     "Pillow",
     # --- Web API ---
     "fastapi",

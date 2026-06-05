@@ -41,7 +41,7 @@ from workflows.doc_governance_workflow import (  # noqa: E402
 )
 from workflows.verba_client import VerbaClient  # noqa: E402
 
-ALLOWED_EXTENSIONS = {".docx", ".doc", ".md", ".markdown", ".txt"}
+ALLOWED_EXTENSIONS = {".docx", ".doc", ".pdf", ".md", ".markdown", ".txt"}
 
 app = FastAPI(
     title="DocGovernance.ai API",

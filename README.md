@@ -49,12 +49,21 @@ search subscription is required.
 
 1. **Ingest** — the Source of Truth is chunked, vectorized (local
    `text2vec-transformers` embedder), and stored in Weaviate.
-2. **Section search** — the Main Document is parsed locally (`python-docx`) and is
+2. **Section search** — the Main Document is parsed locally and is
    **never vectorized**. Each section's text is used as a live query against the
    pre-indexed Source of Truth.
 3. **Validate** — each section plus its retrieved reference context is sent to the
    LLM (Azure OpenAI) to detect direct contradictions, producing an alignment
    report (`totalSections`, `cleanSections`, `issuesFound`, `discrepancies`).
+4. **Export** — the alignment report can be exported as a styled PDF directly from
+   the browser (client-side generation, no backend storage needed).
+
+### Supported file formats
+
+| Role | Formats |
+|------|---------|
+| **Source of Truth** (ingested & vectorized) | `.docx`, `.doc`, `.pdf`, `.md`, `.markdown`, `.txt` |
+| **Main Document** (parsed into sections for review) | `.docx`, `.doc`, `.pdf`, `.md`, `.markdown`, `.txt` |
 
 ### Project structure
 

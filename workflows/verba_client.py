@@ -38,6 +38,7 @@ from weaviate.classes.query import MetadataQuery
 
 # Files we can extract text from for ingestion.
 _TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
+_PDF_EXTENSIONS = {".pdf"}
 
 # Rough chunking targets (characters). Paragraph-aware, with light overlap.
 _CHUNK_CHARS = 900
@@ -162,7 +163,7 @@ class VerbaClient:
 # Helpers
 # --------------------------------------------------------------------------- #
 def _extract_text(path: Path) -> str:
-    """Extract plain text from a .docx / .md / .txt Source-of-Truth file."""
+    """Extract plain text from a .docx / .pdf / .md / .txt Source-of-Truth file."""
     ext = path.suffix.lower()
     if ext in {".docx", ".doc"}:
         from docx import Document  # local import; python-docx is a dependency
@@ -175,6 +176,17 @@ def _extract_text(path: Path) -> str:
                 if cells:
                     parts.append(" | ".join(cells))
         return "\n".join(parts)
+
+    if ext in _PDF_EXTENSIONS:
+        import fitz  # PyMuPDF
+
+        text_parts: list[str] = []
+        with fitz.open(str(path)) as pdf_doc:
+            for page in pdf_doc:
+                page_text = page.get_text("text")
+                if page_text and page_text.strip():
+                    text_parts.append(page_text.strip())
+        return "\n\n".join(text_parts)
 
     if ext in _TEXT_EXTENSIONS:
         return path.read_text(encoding="utf-8", errors="ignore")
